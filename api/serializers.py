@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from django.contrib.auth import get_user_model
-from .models import Category, Tag, Design, DesignImage
+from .models import Category, Tag, Design, DesignImage, Booking, Notification
 from django.utils.text import slugify
 from uuid import uuid4
 
@@ -72,19 +72,65 @@ class DesignSerializer(serializers.ModelSerializer):
     class Meta:
         model = Design
         fields = [
-            'id', 'title', 'slug', 'description', 'price', 'designer',
+            'id', 'title', 'description', 'price', 'designer',
             'category', 'category_id', 'tags', 'tag_ids', 'status',
             'is_premium', 'views', 'likes', 'width', 'height', 'images',
             'created_at', 'updated_at'
         ]
-        read_only_fields = ['id', 'slug', 'designer', 'views', 'likes', 'created_at', 'updated_at']
+        read_only_fields = ['id', 'designer', 'views', 'likes', 'created_at', 'updated_at']
 
     def create(self, validated_data):
         tags = validated_data.pop('tags', [])
-        title = validated_data.get('title', '')
-        # Ensure unique-ish slug; slug is unique_for_date, so we still make it unique to avoid collisions
-        validated_data['slug'] = slugify(f"{title}-{uuid4().hex[:8]}")
         design = Design.objects.create(**validated_data)
         if tags:
             design.tags.set(tags)
         return design
+
+
+class BookingSerializer(serializers.ModelSerializer):
+    # Read-only nested fields
+    client = UserSerializer(read_only=True)
+    designer = UserSerializer(read_only=True)
+    design = DesignSerializer(read_only=True)
+
+    # Write-only input
+    design_id = serializers.PrimaryKeyRelatedField(
+        queryset=Design.objects.all(), source='design', write_only=True
+    )
+
+    class Meta:
+        model = Booking
+        fields = [
+            'id', 'client', 'designer', 'design', 'design_id', 'status', 'payment_status',
+            'amount', 'deposit', 'start_date', 'end_date', 'address', 'city', 'state',
+            'country', 'postal_code', 'notes', 'created_at', 'updated_at'
+        ]
+        read_only_fields = ['id', 'client', 'designer', 'status', 'payment_status', 'created_at', 'updated_at']
+
+    def create(self, validated_data):
+        request = self.context.get('request')
+        user = getattr(request, 'user', None)
+        design: Design = validated_data['design']
+
+        # Set parties
+        validated_data['client'] = user
+        validated_data['designer'] = design.designer
+
+        # Default amounts if not provided
+        if 'amount' not in validated_data or validated_data['amount'] in (None, ''):
+            validated_data['amount'] = design.price
+        if 'deposit' not in validated_data or validated_data['deposit'] in (None, ''):
+            validated_data['deposit'] = 0
+
+        # Initial statuses
+        validated_data['status'] = 'pending'
+        validated_data['payment_status'] = 'pending'
+
+        return super().create(validated_data)
+
+
+class NotificationSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Notification
+        fields = ['id', 'notification_type', 'message', 'is_read', 'related_id', 'created_at']
+        read_only_fields = ['id', 'created_at']

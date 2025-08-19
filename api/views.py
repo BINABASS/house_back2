@@ -7,10 +7,10 @@ from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
 
-from .models import Category, Tag, Design, DesignImage
+from .models import Category, Tag, Design, DesignImage, Booking, Notification
 from .serializers import (
     UserSerializer, CategorySerializer, TagSerializer,
-    DesignSerializer, DesignImageSerializer
+    DesignSerializer, DesignImageSerializer, BookingSerializer, NotificationSerializer
 )
 
 
@@ -63,6 +63,9 @@ class DesignViewSet(viewsets.ModelViewSet):
         if not getattr(user, 'is_staff', False):
             if getattr(user, 'is_authenticated', False):
                 qs = qs.filter(Q(status='approved') | Q(designer=user))
+                # Support 'designer=me' filter
+                if self.request.query_params.get('designer') == 'me':
+                    qs = qs.filter(designer=user)
             else:
                 qs = qs.filter(status='approved')
         return qs.distinct()
@@ -126,3 +129,55 @@ class DesignImageViewSet(viewsets.ModelViewSet):
         if design.designer != self.request.user and not self.request.user.is_staff:
             raise PermissionDenied("You don't have permission to add images to this design.")
         serializer.save(design=design)
+
+
+class BookingViewSet(viewsets.ModelViewSet):
+    serializer_class = BookingSerializer
+    permission_classes = [permissions.IsAuthenticated]
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
+    filterset_fields = ['status', 'payment_status', 'designer', 'client', 'design']
+    search_fields = ['address', 'city', 'state', 'country', 'notes', 'design__title']
+    ordering_fields = ['created_at', 'amount', 'start_date']
+    ordering = ['-created_at']
+
+    def get_queryset(self):
+        user = self.request.user
+        qs = Booking.objects.select_related('client', 'designer', 'design')
+        if user.is_staff:
+            return qs
+        # Designers see their bookings; clients see theirs
+        return qs.filter(models.Q(client=user) | models.Q(designer=user)).distinct()
+
+    def perform_create(self, serializer):
+        booking = serializer.save()
+        # Notify the designer of booking request
+        Notification.objects.create(
+            user=booking.designer,
+            notification_type='booking_request',
+            message=f"New booking request for '{booking.design.title}' from {booking.client.email}",
+            related_id=booking.id,
+        )
+
+    @action(detail=True, methods=['post'])
+    def confirm(self, request, pk=None):
+        booking = self.get_object()
+        if booking.designer != request.user and not request.user.is_staff:
+            raise PermissionDenied('Only the assigned designer can confirm this booking.')
+        booking.status = 'confirmed'
+        booking.save(update_fields=['status'])
+        Notification.objects.create(
+            user=booking.client,
+            notification_type='booking_confirmed',
+            message=f"Your booking for '{booking.design.title}' was confirmed.",
+            related_id=booking.id,
+        )
+        return Response({'status': 'booking confirmed'})
+
+    @action(detail=True, methods=['post'])
+    def cancel(self, request, pk=None):
+        booking = self.get_object()
+        if booking.client != request.user and booking.designer != request.user and not request.user.is_staff:
+            raise PermissionDenied('Not allowed to cancel this booking.')
+        booking.status = 'cancelled'
+        booking.save(update_fields=['status'])
+        return Response({'status': 'booking cancelled'})

@@ -6,7 +6,7 @@ from rest_framework_simplejwt.views import (
     TokenRefreshView,
 )
 
-from .views import CategoryViewSet, TagViewSet, DesignViewSet, DesignImageViewSet
+from .views import CategoryViewSet, TagViewSet, DesignViewSet, DesignImageViewSet, BookingViewSet
 
 # ==============================
 # Main router
@@ -15,6 +15,7 @@ router = DefaultRouter()
 router.register(r'categories', CategoryViewSet, basename='category')
 router.register(r'tags', TagViewSet, basename='tag')
 router.register(r'designs', DesignViewSet, basename='design')
+router.register(r'bookings', BookingViewSet, basename='booking')
 
 # ==============================
 # Nested router for design images

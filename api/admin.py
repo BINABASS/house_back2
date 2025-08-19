@@ -42,7 +42,6 @@ class DesignAdmin(admin.ModelAdmin):
     list_display = ('title', 'designer', 'category', 'status', 'is_premium', 'created_at')
     list_filter = ('status', 'is_premium', 'category', 'tags')
     search_fields = ('title', 'description', 'designer__email')
-    prepopulated_fields = {'slug': ('title',)}
     inlines = [DesignImageInline]
     filter_horizontal = ('tags',)
     date_hierarchy = 'created_at'

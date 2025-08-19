@@ -108,7 +108,6 @@ class Design(models.Model):
     
     designer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='designs')
     title = models.CharField(max_length=200)
-    slug = models.SlugField(max_length=250, unique_for_date='created_at')
     description = models.TextField()
     price = models.DecimalField(
         max_digits=10, 
@@ -162,6 +161,8 @@ class Design(models.Model):
         """Increment the view count."""
         self.views = models.F('views') + 1
         self.save(update_fields=['views'])
+    
+
 
 
 class DesignImage(models.Model):
