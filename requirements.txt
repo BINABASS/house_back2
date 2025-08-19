@@ -1,0 +1,11 @@
+Django==4.2.7
+djangorestframework==3.14.0
+django-cors-headers==4.3.1
+drf-yasg==1.21.7
+Pillow==10.1.0
+psycopg2-binary==2.9.9
+python-dotenv==1.0.0
+Faker==23.2.0
+drf-nested-routers==0.93.4
+django-filter==23.5
+djangorestframework-simplejwt==5.3.1
