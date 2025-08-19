@@ -3,6 +3,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django_filters.rest_framework import DjangoFilterBackend
+from django.db import models
 from django.shortcuts import get_object_or_404
 from django.core.exceptions import PermissionDenied
 from django.db.models import Q
@@ -60,15 +61,30 @@ class DesignViewSet(viewsets.ModelViewSet):
     def get_queryset(self):
         qs = super().get_queryset().prefetch_related('images', 'tags', 'category')
         user = self.request.user
-        if not getattr(user, 'is_staff', False):
-            if getattr(user, 'is_authenticated', False):
-                qs = qs.filter(Q(status='approved') | Q(designer=user))
-                # Support 'designer=me' filter
-                if self.request.query_params.get('designer') == 'me':
-                    qs = qs.filter(designer=user)
-            else:
-                qs = qs.filter(status='approved')
-        return qs.distinct()
+        
+        # Get the designer filter from query params
+        designer_filter = self.request.query_params.get('designer')
+        
+        # Handle 'designer=me' filter
+        if designer_filter == 'me':
+            if not user.is_authenticated:
+                return qs.none()
+            return qs.filter(designer=user)
+        
+        # Handle specific designer ID filter
+        if designer_filter and designer_filter.isdigit():
+            return qs.filter(designer_id=int(designer_filter))
+            
+        # For staff, return all designs
+        if getattr(user, 'is_staff', False):
+            return qs
+            
+        # For authenticated non-staff users, show their designs + approved designs
+        if user.is_authenticated:
+            return qs.filter(Q(status='approved') | Q(designer=user))
+            
+        # For unauthenticated users, only show approved designs
+        return qs.filter(status='approved')
 
     def perform_create(self, serializer):
         serializer.save(designer=self.request.user, status='pending')
